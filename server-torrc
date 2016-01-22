@@ -1,0 +1,6 @@
+SocksPort 9885
+ORPort 0
+DataDirectory server-datadir
+HiddenServiceDir hs-chat-dir
+HiddenServicePort 2331
+SafeLogging 0

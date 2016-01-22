@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+
+import getopt
+import os
+import select
+import socket
+import ssl
+import struct
+import sys
+
+def usage(f=sys.stdout):
+    f.write("""\
+Usage: %s --tls-trustfile=FILENAME HOST PORT
+
+  --disable-tls             run without TLS
+  --socks-port=PORT         use the SOCKS proxy at 127.0.0.1:PORT
+  --tls-trustfile=FILENAME  trust the root certificates in FILENAME
+  --help                    show this help
+""" % sys.argv[0])
+
+class options(object):
+    use_tls = True
+    socks_port = None
+    tls_trust_filename = None
+
+# Return a socket connected to remote_address, which is a (hostname, port)
+# tuple.
+def connect(remote_address):
+    s = socket.socket(socket.AF_INET)
+    s.connect(remote_address)
+    return s
+
+# Return a socket connected to remote_address through the SOCKS4a proxy at
+# socks_address.
+def connect_with_socks(remote_address, socks_address):
+    hostname, port = remote_address
+
+
+    print("remote_address: " + str(remote_address))
+    print("socks_address: " + str(socks_address))
+    s = socket.socket(socket.AF_INET)
+    s.connect(socks_address)
+    request = bytearray()
+    request.append(4)
+    request.append(1)
+    request +=  struct.pack('>H', port) + struct.pack('BBBB', 0, 0, 0, 5)
+    request.append(3)
+    request += b'\0'
+    request += str.encode(hostname) + b'\0'
+    print("port: " + str(struct.pack('>h', port)))
+    print("ip: " + str(struct.pack('BBBB', 0, 0, 0, 5)))
+    print("hostname: " + str(str.encode(hostname) + b'\0'))
+    s.send(request)
+    print("request: " + str(request))
+    response = s.recv(1024)
+    print("response: " + str(response))
+    print("response: " + str(response[1]))
+    if (response[1] != 90):
+        raise socket.error
+    return s
+
+
+# Parse command line options.
+opts, args = getopt.gnu_getopt(sys.argv[1:], "",
+    ["disable-tls", "socks-port=", "tls-trustfile=", "help"])
+for o, a in opts:
+    if o == "--disable-tls":
+        options.use_tls = False
+    elif o == "--socks-port":
+        options.socks_port = int(a)
+    elif o == "--tls-trustfile":
+        options.tls_trust_filename = a
+    elif o == "--help":
+        usage()
+        sys.exit()
+try:
+    remote_hostname, remote_port = args
+    remote_port = int(remote_port)
+except ValueError:
+    usage(sys.stderr)
+    sys.exit(1)
+
+print("connecting", file=sys.stderr)
+try:
+    if options.socks_port is not None:
+        remote_socket = connect_with_socks((remote_hostname, remote_port), ("127.0.0.1", options.socks_port))
+    else:
+        remote_socket = connect((remote_hostname, remote_port))
+except socket.error as e:
+    print("cannot connect to %s port %d: %s" % (remote_hostname, remote_port, e), file=sys.stderr)
+    sys.exit(1)
+print("connected", file=sys.stderr)
+
+if options.use_tls:
+    # TODO
+    # Wrap remote_socket in TLS and assign the resulting socket.SSLSocket back
+    # to the remote_socket variable.
+     
+    
+    sslcontext = ssl.create_default_context()
+    sslcontext.verify_mode = ssl.CERT_REQUIRED #enable certificate verification
+    sslcontext.check_hostname = True #enable checking of hostnames
+    sslcontext.load_verify_locations(cafile=options.tls_trust_filename)
+    remote_socket = sslcontext.wrap_socket(remote_socket, server_hostname=remote_hostname)
+    
+
+# Unbuffer stdin, change to binary mode.
+sys.stdin = os.fdopen(sys.stdin.fileno(), "rb", 0)
+# Change stdout to binary mode.
+sys.stdout = os.fdopen(sys.stdout.fileno(), "wb")
+
+sendbuf = []
+while True:
+    # select.select will notify us which file handles are ready to read.
+    rset, _, _ = select.select([sys.stdin, remote_socket], [], [])
+    for s in rset:
+        if s == sys.stdin:
+            c = s.read(1)
+            if not c:
+                sys.exit()
+            # Buffer keyboard input until a newline.
+            sendbuf.append(c)
+            if c == b"\n":
+                data = b"".join(sendbuf)
+                remote_socket.sendall(data)
+                sendbuf = []
+        else:
+            try:
+                data = s.recv(1024)
+            except (ssl.SSLWantReadError, ssl.SSLWantWriteError):
+                continue
+            except socket.error:
+                data = None
+            if not data:
+                sys.exit()
+            sys.stdout.write(data)
+            sys.stdout.flush()

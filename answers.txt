@@ -1,0 +1,18 @@
+Partners:
+	Sophia Cooper, cs161-ao, 23440100
+	Loretta Chan, cs161-fu, 23844320
+
+1.	In order to impersonate another user, one user could manipulate his/her input to look like it came from another user. For example, user 6 could input "hey guys! <newline char>  <user 7> I HATE ALL OF YOU." Therefore, every terminal, it would appear as if user 7 had said something that they had not. 
+
+2.	HiddenServiceAuthorizeClient allows you to restrict service to only authorized clients.
+
+3.	In the server file, usernames are determined by the line "return "user %d" % s.fileno()"
+	File numbers 0, 1 and 2 are reserved for Standard Input/Output/Error, which were opened in the Client file, so there will never be a user 0, 1 or 2.
+	The server also opens the listen_socket to listen for clients connecting to the server, and this also opens a file, which would be file number 3.
+	Therefore, when the first client tries to connect to the server, file no. 0, 1, 2 and 3 are taken, so they become User 4.
+
+4.	What is the greatest limitation you found in Tor? What recommendations 
+	would we make to Tor developers?
+	Maybe auto-assign all ports, or figure out a way to have more than one user on a port.
+	One of the most inconvenient parts of this project was resetting the port numbers and having
+	to re-setup the server each time
